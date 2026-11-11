@@ -18,6 +18,50 @@ async function getTemplateHtml(env, requestUrl) {
   return cachedTemplateHtml;
 }
 
+// 首页 HTML 体积约 250KB，跨境链路上「传输」比「渲染」贵得多。
+// 用 ETag 让重复访问退化成 304（只回几百字节头部），再用 stale-while-revalidate
+// 让浏览器先出旧页面、后台悄悄校验，避免每次导航都白屏等一整个往返。
+// 不加 s-maxage：首页响应带 Cookie 分流（管理员/访客内容不同），
+// 交给 Cloudflare 边缘按 URL 缓存会把公开版本喂给管理员。
+const PUBLIC_HTML_CACHE_CONTROL = 'public, max-age=0, stale-while-revalidate=120';
+const PRIVATE_HTML_CACHE_CONTROL = 'private, no-store, max-age=0';
+
+function toHex(buffer) {
+  return Array.from(new Uint8Array(buffer))
+    .map(byte => byte.toString(16).padStart(2, '0'))
+    .join('');
+}
+
+async function computeHtmlEtag(html) {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(html));
+  return `"${toHex(digest).slice(0, 24)}"`;
+}
+
+/**
+ * 统一构造首页 HTML 响应：附带 ETag，命中协商缓存时返回 304。
+ * @param {string} html
+ * @param {Request} request
+ * @param {boolean} isAuthenticated
+ * @param {object} extraHeaders
+ * @returns {Promise<Response>}
+ */
+async function buildHtmlResponse(html, request, isAuthenticated, extraHeaders = {}) {
+  const etag = await computeHtmlEtag(html);
+  const headers = {
+    'Content-Type': 'text/html; charset=utf-8',
+    'Cache-Control': isAuthenticated ? PRIVATE_HTML_CACHE_CONTROL : PUBLIC_HTML_CACHE_CONTROL,
+    'ETag': etag,
+    ...extraHeaders,
+  };
+
+  // 管理员页面随时可能因数据变更而不同，不参与协商缓存。
+  if (!isAuthenticated && request.headers.get('If-None-Match') === etag) {
+    return new Response(null, { status: 304, headers });
+  }
+
+  return new Response(html, { headers });
+}
+
 function getThemeClasses(isCustomWallpaper) {
   return isCustomWallpaper ? {
     headerClass: 'bg-transparent border-none shadow-none transition-colors duration-300',
@@ -96,13 +140,7 @@ export async function onRequest(context) {
     cacheDirty = !!cacheDirtyValue;
 
     if (!cacheDirty && cachedHtml) {
-      const response = new Response(cachedHtml, {
-        headers: {
-          'Content-Type': 'text/html; charset=utf-8',
-          'Cache-Control': isAuthenticated ? 'private, no-store, max-age=0' : 'public, max-age=0, must-revalidate',
-          'X-Cache': 'HIT',
-        }
-      });
+      const response = await buildHtmlResponse(cachedHtml, request, isAuthenticated, { 'X-Cache': 'HIT' });
 
       if (shouldClearCookie) {
         response.headers.append('Set-Cookie', 'iori_cache_stale=; Path=/; Max-Age=0; SameSite=Lax');
@@ -596,12 +634,7 @@ export async function onRequest(context) {
   html = html.replace(/>\s+</g, '><');
 
   // === 17. 返回响应 ===
-  const response = new Response(html, {
-    headers: {
-      'Content-Type': 'text/html; charset=utf-8',
-      'Cache-Control': isAuthenticated ? 'private, no-store, max-age=0' : 'public, max-age=0, must-revalidate',
-    }
-  });
+  const response = await buildHtmlResponse(html, request, isAuthenticated);
 
   if (shouldClearCookie) {
     response.headers.append('Set-Cookie', 'iori_cache_stale=; Path=/; Max-Age=0; SameSite=Lax');
