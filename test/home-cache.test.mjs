@@ -289,3 +289,43 @@ test('ordinary data invalidation still writes dirty markers when D1 rotation fai
   assert.ok(env.NAV_AUTH.store.get(getHomeDirtyKey('public')));
   assert.ok(env.NAV_AUTH.store.get(getHomeDirtyKey('private')));
 });
+
+test('首页响应带 ETag，带 If-None-Match 重访返回 304', options, async t => {
+  const env = createEnv(t);
+  const first = await requestHome(env);
+  const etag = first.headers.get('ETag');
+
+  assert.ok(etag, '首页必须下发 ETag');
+  assert.match(etag, /^"[0-9a-f]{24}"$/);
+  assert.match(first.headers.get('Cache-Control'), /stale-while-revalidate=120/);
+  assert.doesNotMatch(first.headers.get('Cache-Control'), /must-revalidate/);
+
+  const revalidated = await onRequest({
+    env,
+    request: new Request('https://example.com/', { headers: { 'If-None-Match': etag } }),
+    waitUntil: () => {},
+  });
+
+  assert.equal(revalidated.status, 304);
+  assert.equal(await revalidated.text(), '');
+  assert.equal(revalidated.headers.get('ETag'), etag);
+});
+
+test('管理员请求不参与 ETag 协商，响应保持 no-store', options, async t => {
+  const env = createEnv(t);
+  env.NAV_AUTH.store.set('session_admin-token', '1');
+
+  const response = await onRequest({
+    env,
+    request: new Request('https://example.com/', {
+      headers: {
+        Cookie: 'admin_session=admin-token',
+        'If-None-Match': '"whatever"',
+      },
+    }),
+    waitUntil: () => {},
+  });
+
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get('Cache-Control'), 'private, no-store, max-age=0');
+});
