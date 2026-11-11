@@ -203,7 +203,7 @@ npx wrangler d1 execute book --local --file=schema.sql
 | `SITE_NAME` | `灰色轨迹` | 首页站点名称（环境变量兜底） |
 | `SITE_DESCRIPTION` | `一个优雅、快速、易于部署的书签（网址）收藏与分享平台，完全基于 Cloudflare 全家桶构建` | 首页副标题（环境变量兜底） |
 | `FOOTER_TEXT` | `曾梦想仗剑走天涯` | 首页页脚文案 |
-| `ICON_API` | `https://faviconsnap.com/api/favicon?url=` | 自动补全 logo 的接口前缀。建议改成 `https://你的域名/icon?url=`，见下方「图标代理」 |
+| `ICON_API` | `https://faviconsnap.com/api/favicon?url=` | 自动补全 logo 的接口前缀 |
 | `AI_REQUEST_DELAY` | `1500` | AI 一键补全描述调用间隔（毫秒） |
 | `WORKERS_AI_MODEL` | `@cf/google/gemma-4-26b-a4b-it` | Workers AI 模型兜底；后台 AI 设置中保存的模型优先 |
 | `TURNSTILE_SITE_KEY` | 空 | Cloudflare Turnstile 站点密钥；与 `TURNSTILE_SECRET_KEY` 同时配置后启用后台登录与公开投稿人机验证 |
@@ -219,23 +219,6 @@ npx wrangler d1 execute book --local --file=schema.sql
 - Workers AI 设置推荐：`@cf/google/gemma-4-26b-a4b-it`（默认）、`@cf/mistralai/mistral-small-3.1-24b-instruct`、`@cf/qwen/qwq-32b`、`@cf/qwen/qwen3-30b-a3b-fp8`、`@cf/meta/llama-3.1-8b-instruct-fp8`。其余模型请自行测试。
 
 > **💡 提示**：如使用免费的 Gemini API Key（模型 `gemini-2.5-flash-lite`），频率限制为 15 次/分钟，请根据实际情况调整 `AI_REQUEST_DELAY`。
-
-### 🖼️ 图标代理与首屏性能
-
-首页卡片的图标统一走站内端点 `/icon?url=<domain>`，不再由浏览器直连第三方 favicon 服务。原因很实际：首屏几十个图标如果散落在第三方域名上，每张图都要多付一轮 DNS + TLS，第三方缓存过期后还要重走一遍；上游被墙时浏览器会一直挂到超时才显示占位。
-
-- **存量数据无需迁移**：数据库里仍是 `faviconsnap` 等第三方绝对地址，渲染时由 `functions/lib/icon-proxy.js` 的 `toLocalIconUrl()` 自动改写成 `/icon?url=...`。
-- **多级缓存**：成功的图标下发 `max-age=31536000, immutable`；边缘用 Cache API 再存一份；上游 fetch 用 `cacheTtlByStatus` 让第三方响应在 Cloudflare 侧缓存 30 天。
-- **失败兜底**：上游 2.5 秒超时，全失败时返回本地生成的字母占位图，只缓存 10 分钟，避免一次抖动把占位图锁死。
-- **换成自建图标服务**：把 `ICON_API` 指向自己的前缀即可；渲染改写只识别内置的几家（faviconsnap / favicon.im / faviconextractor / Google s2），其余地址原样保留。
-
-首页 HTML 另外补了 `ETag` 与 `max-age=30, stale-while-revalidate=300`：30 秒内的重复访问完全不碰网络，之后先出旧页面再后台校验。
-
-> 注意：自定义域上 Cloudflare 会摘掉强 ETag（Rocket Loader / Email Obfuscation / Bot Fight Mode 注入 JS 都会改写 HTML）。`pages.dev` 预览域名保留 ETag、能走 304；想在自定义域上也走 304，需要在 Cache Rules 里打开 Respect Strong ETags，或关掉上述改写类功能。因此浏览器侧缓存没有只押在 ETag 上。
-
-> ⚠️ **必须关掉 Cloudflare Speed Brain**（Speed → Settings → Content Optimization）。它会给 HTML 加上 `speculation-rules: /cdn-cgi/speculation`，浏览器每次导航都要多拉一次这个不缓存的小文件；而官方限制写明预取不作用于经过 Worker 的路由，本站全部路由都在 Worker 里 —— 收益为零，只剩开销。中国大陆直连时这条请求实测 3~20 秒。
->
-> 命令行关闭：`CLOUDFLARE_API_TOKEN=xxx CLOUDFLARE_ZONE_ID=yyy npm run speed-brain -- off`
 
 ### 🔐 管理后台
 

@@ -18,58 +18,6 @@ async function getTemplateHtml(env, requestUrl) {
   return cachedTemplateHtml;
 }
 
-// 首页 HTML 体积约 250KB，跨境链路上「传输」比「渲染」贵得多，重复访问不该再付一次。
-//
-// 这里同时下发 ETag 与短 max-age，两者是互补而不是二选一：
-// - ETag 走 304：只回几百字节头部。但实测自定义域上 Cloudflare 会把强 ETag 摘掉
-//   （Rocket Loader / Email Obfuscation / Bot Fight Mode 的 JS 注入都会改写 HTML，
-//   改写后强 ETag 失效就会被移除），pages.dev 预览域名则保留。所以不能只靠它。
-// - max-age=30 + stale-while-revalidate=300：不依赖任何边缘功能。30 秒内直接吃本地
-//   缓存、一个字节都不发；30 秒后先出旧页面再后台刷新。代价是后台改数据最多滞后
-//   半分钟才被访客看到，对书签站可以接受，换来的是导航站最常见的「来回切页面」
-//   场景彻底不碰网络。
-//
-// 不加 s-maxage：首页响应带 Cookie 分流（管理员/访客内容不同），
-// 交给 Cloudflare 边缘按 URL 缓存会把公开版本喂给管理员。
-const PUBLIC_HTML_CACHE_CONTROL = 'public, max-age=30, stale-while-revalidate=300';
-const PRIVATE_HTML_CACHE_CONTROL = 'private, no-store, max-age=0';
-
-function toHex(buffer) {
-  return Array.from(new Uint8Array(buffer))
-    .map(byte => byte.toString(16).padStart(2, '0'))
-    .join('');
-}
-
-async function computeHtmlEtag(html) {
-  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(html));
-  return `"${toHex(digest).slice(0, 24)}"`;
-}
-
-/**
- * 统一构造首页 HTML 响应：附带 ETag，命中协商缓存时返回 304。
- * @param {string} html
- * @param {Request} request
- * @param {boolean} isAuthenticated
- * @param {object} extraHeaders
- * @returns {Promise<Response>}
- */
-async function buildHtmlResponse(html, request, isAuthenticated, extraHeaders = {}) {
-  const etag = await computeHtmlEtag(html);
-  const headers = {
-    'Content-Type': 'text/html; charset=utf-8',
-    'Cache-Control': isAuthenticated ? PRIVATE_HTML_CACHE_CONTROL : PUBLIC_HTML_CACHE_CONTROL,
-    'ETag': etag,
-    ...extraHeaders,
-  };
-
-  // 管理员页面随时可能因数据变更而不同，不参与协商缓存。
-  if (!isAuthenticated && request.headers.get('If-None-Match') === etag) {
-    return new Response(null, { status: 304, headers });
-  }
-
-  return new Response(html, { headers });
-}
-
 function getThemeClasses(isCustomWallpaper) {
   return isCustomWallpaper ? {
     headerClass: 'bg-transparent border-none shadow-none transition-colors duration-300',
@@ -148,7 +96,13 @@ export async function onRequest(context) {
     cacheDirty = !!cacheDirtyValue;
 
     if (!cacheDirty && cachedHtml) {
-      const response = await buildHtmlResponse(cachedHtml, request, isAuthenticated, { 'X-Cache': 'HIT' });
+      const response = new Response(cachedHtml, {
+        headers: {
+          'Content-Type': 'text/html; charset=utf-8',
+          'Cache-Control': isAuthenticated ? 'private, no-store, max-age=0' : 'public, max-age=0, must-revalidate',
+          'X-Cache': 'HIT',
+        }
+      });
 
       if (shouldClearCookie) {
         response.headers.append('Set-Cookie', 'iori_cache_stale=; Path=/; Max-Age=0; SameSite=Lax');
@@ -642,7 +596,12 @@ export async function onRequest(context) {
   html = html.replace(/>\s+</g, '><');
 
   // === 17. 返回响应 ===
-  const response = await buildHtmlResponse(html, request, isAuthenticated);
+  const response = new Response(html, {
+    headers: {
+      'Content-Type': 'text/html; charset=utf-8',
+      'Cache-Control': isAuthenticated ? 'private, no-store, max-age=0' : 'public, max-age=0, must-revalidate',
+    }
+  });
 
   if (shouldClearCookie) {
     response.headers.append('Set-Cookie', 'iori_cache_stale=; Path=/; Max-Age=0; SameSite=Lax');

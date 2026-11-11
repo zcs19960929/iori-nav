@@ -1,5 +1,4 @@
 import { escapeHTML, sanitizeUrl } from './utils';
-import { toLocalIconUrl } from './icon-proxy';
 
 function getDeviceSetting(settings, device, key, fallback = '') {
   const mobileKey = `mobile_${key}`;
@@ -74,9 +73,7 @@ export function buildCardTemplateConfig(settings = {}, device = 'desktop') {
 export function buildCardViewModel(site) {
   const rawName = site?.name || '未命名';
   const normalizedUrl = sanitizeUrl(site?.url);
-  // 存量数据里的 logo 是 faviconsnap 这类第三方绝对地址，渲染时收敛到同源 /icon，
-  // 省掉每个图标一次跨境 DNS + TLS，也顺带绕开第三方域名的可达性问题。
-  const normalizedLogo = toLocalIconUrl(sanitizeUrl(site?.logo));
+  const normalizedLogo = sanitizeUrl(site?.logo);
   const rawCatalog = site?.catelog_name || site?.catelog || '未分类';
   const rawDesc = site?.desc || '暂无描述';
 

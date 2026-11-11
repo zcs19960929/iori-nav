@@ -17,7 +17,6 @@ iori-nav/
 ├── functions/              # Cloudflare Pages Functions（后端）
 │   ├── _middleware.js      # 全局中间件（认证、CSRF、限流、缓存失效）
 │   ├── index.js            # 首页 SSR 渲染
-│   ├── icon.js             # 图标代理端点 /icon?url=<domain>（favicon.js 复用同一实现）
 │   ├── constants.js        # SCHEMA_VERSION / HOME_CACHE_VERSION / DB_SCHEMA 等核心常量
 │   ├── admin/              # 管理后台（login.js, logout.js, index.js）
 │   ├── api/                # REST API（categories/, config/, pending/, cache/, settings.js, wallpaper.js 等）
@@ -191,7 +190,7 @@ function showToast(message) {
 | `SITE_NAME` | 网站名称 | `灰色轨迹` |
 | `SITE_DESCRIPTION` | 首页副标题 | `一个优雅、快速、易于部署的书签（网址）收藏与分享平台，完全基于 Cloudflare 全家桶构建` |
 | `FOOTER_TEXT` | 首页页脚 | `曾梦想仗剑走天涯` |
-| `ICON_API` | 图标 API | `https://faviconsnap.com/api/favicon?url=`（建议改为 `https://你的域名/icon?url=`） |
+| `ICON_API` | 图标 API | `https://faviconsnap.com/api/favicon?url=` |
 | `AI_REQUEST_DELAY` | AI 描述补全调用间隔（毫秒） | `1500` |
 
 > `DISPLAY_CATEGORY` 已废弃，当前代码不会读取该变量。

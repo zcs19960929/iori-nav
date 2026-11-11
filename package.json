@@ -14,8 +14,7 @@
     "build:css": "npx tailwindcss -i ./public/css/tailwind.css -o ./public/css/tailwind.min.css --minify",
     "dev:css": "npx tailwindcss -i ./public/css/tailwind.css -o ./public/css/tailwind.min.css --watch",
     "test:e2e": "playwright test",
-    "test:e2e:ui": "playwright test --ui",
-    "speed-brain": "node scripts/set-speed-brain.mjs"
+    "test:e2e:ui": "playwright test --ui"
   },
   "devDependencies": {
     "@playwright/test": "^1.64.1",

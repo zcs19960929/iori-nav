@@ -25,8 +25,7 @@ export const PREVIOUS_SCHEMA_VERSION = 'v5';
 
 // 首页 HTML 缓存版本 - 修改此值会强制刷新首页缓存
 // v42：TTL 从 30 天缩短到 6 小时。缓存键还带 D1 generation，数据写入后轮换。
-// v43：卡片图标改写为同源 /icon?url=...，旧缓存里还是第三方绝对地址，必须失效。
-export const HOME_CACHE_VERSION = 'v43';
+export const HOME_CACHE_VERSION = 'v42';
 
 // 首页 HTML 缓存与 dirty 标记 TTL（6 小时）
 //
