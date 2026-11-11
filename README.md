@@ -229,7 +229,9 @@ npx wrangler d1 execute book --local --file=schema.sql
 - **失败兜底**：上游 2.5 秒超时，全失败时返回本地生成的字母占位图，只缓存 10 分钟，避免一次抖动把占位图锁死。
 - **换成自建图标服务**：把 `ICON_API` 指向自己的前缀即可；渲染改写只识别内置的几家（faviconsnap / favicon.im / faviconextractor / Google s2），其余地址原样保留。
 
-首页 HTML 另外补了 `ETag` 与 `stale-while-revalidate=120`：250 KB 的页面在重复访问时退化成 304，浏览器先出旧页面再后台校验。
+首页 HTML 另外补了 `ETag` 与 `max-age=30, stale-while-revalidate=300`：30 秒内的重复访问完全不碰网络，之后先出旧页面再后台校验。
+
+> 注意：自定义域上 Cloudflare 会摘掉强 ETag（Rocket Loader / Email Obfuscation / Bot Fight Mode 注入 JS 都会改写 HTML）。`pages.dev` 预览域名保留 ETag、能走 304；想在自定义域上也走 304，需要在 Cache Rules 里打开 Respect Strong ETags，或关掉上述改写类功能。因此浏览器侧缓存没有只押在 ETag 上。
 
 > ⚠️ **必须关掉 Cloudflare Speed Brain**（Speed → Settings → Content Optimization）。它会给 HTML 加上 `speculation-rules: /cdn-cgi/speculation`，浏览器每次导航都要多拉一次这个不缓存的小文件；而官方限制写明预取不作用于经过 Worker 的路由，本站全部路由都在 Worker 里 —— 收益为零，只剩开销。中国大陆直连时这条请求实测 3~20 秒。
 >

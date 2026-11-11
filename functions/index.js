@@ -18,12 +18,20 @@ async function getTemplateHtml(env, requestUrl) {
   return cachedTemplateHtml;
 }
 
-// 首页 HTML 体积约 250KB，跨境链路上「传输」比「渲染」贵得多。
-// 用 ETag 让重复访问退化成 304（只回几百字节头部），再用 stale-while-revalidate
-// 让浏览器先出旧页面、后台悄悄校验，避免每次导航都白屏等一整个往返。
+// 首页 HTML 体积约 250KB，跨境链路上「传输」比「渲染」贵得多，重复访问不该再付一次。
+//
+// 这里同时下发 ETag 与短 max-age，两者是互补而不是二选一：
+// - ETag 走 304：只回几百字节头部。但实测自定义域上 Cloudflare 会把强 ETag 摘掉
+//   （Rocket Loader / Email Obfuscation / Bot Fight Mode 的 JS 注入都会改写 HTML，
+//   改写后强 ETag 失效就会被移除），pages.dev 预览域名则保留。所以不能只靠它。
+// - max-age=30 + stale-while-revalidate=300：不依赖任何边缘功能。30 秒内直接吃本地
+//   缓存、一个字节都不发；30 秒后先出旧页面再后台刷新。代价是后台改数据最多滞后
+//   半分钟才被访客看到，对书签站可以接受，换来的是导航站最常见的「来回切页面」
+//   场景彻底不碰网络。
+//
 // 不加 s-maxage：首页响应带 Cookie 分流（管理员/访客内容不同），
 // 交给 Cloudflare 边缘按 URL 缓存会把公开版本喂给管理员。
-const PUBLIC_HTML_CACHE_CONTROL = 'public, max-age=0, stale-while-revalidate=120';
+const PUBLIC_HTML_CACHE_CONTROL = 'public, max-age=30, stale-while-revalidate=300';
 const PRIVATE_HTML_CACHE_CONTROL = 'private, no-store, max-age=0';
 
 function toHex(buffer) {

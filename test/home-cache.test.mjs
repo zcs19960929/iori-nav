@@ -297,7 +297,8 @@ test('首页响应带 ETag，带 If-None-Match 重访返回 304', options, async
 
   assert.ok(etag, '首页必须下发 ETag');
   assert.match(etag, /^"[0-9a-f]{24}"$/);
-  assert.match(first.headers.get('Cache-Control'), /stale-while-revalidate=120/);
+  assert.match(first.headers.get('Cache-Control'), /max-age=30/);
+  assert.match(first.headers.get('Cache-Control'), /stale-while-revalidate=300/);
   assert.doesNotMatch(first.headers.get('Cache-Control'), /must-revalidate/);
 
   const revalidated = await onRequest({
